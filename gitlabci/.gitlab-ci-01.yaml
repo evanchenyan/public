@@ -80,7 +80,7 @@ detect-project-type:
 # ==================== 公共认证模板 ====================
 .kaniko-setup:
   script:
-    - echo "🔐 配置镜像仓库认证（方式一：auth字符串）"
+    - echo "🔐 配置镜像仓库认证"
     - |
       # 检查认证变量是否存在
       if [ -z "${REGISTRY_AUTH}" ]; then
@@ -93,7 +93,7 @@ detect-project-type:
       
       # 创建认证目录
       mkdir -p /kaniko/.docker
-      
+      REGISTRY_AUTH=$(echo -n ${REGISTRY_USER}:${REGISTRY_PASSWORD} | base64 )
       # 创建config.json认证文件（使用auth字段）
       cat > /kaniko/.docker/config.json <<EOF
 {
