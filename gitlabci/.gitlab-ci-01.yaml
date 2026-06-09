@@ -1,4 +1,4 @@
-# .gitlab-ci.yml - 通用CI配置，使用auth字符串认证
+# .gitlab-ci.yml - 通用CI配置,使用auth字符串认证
 stages:
   - detect
   - build-and-push
@@ -9,7 +9,6 @@ variables:
   IMAGE_REGISTRY: "your-registry.example.com"  # 修改为实际仓库地址
   IMAGE_NAMESPACE: "your-namespace"            # 修改为命名空间/项目名
   IMAGE_NAME: "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
-  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
   
   # Kaniko 配置
   KANIKO_IMAGE: "gcr.io/kaniko-project/executor:debug"
@@ -33,6 +32,10 @@ before_script:
   - echo "镜像地址: ${IMAGE_NAME}:${IMAGE_TAG}"
   - echo "执行时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
   - echo "==========================================="
+
+  # 动态生成带日期的版本号
+  - export DATE_TAG=$(date +"%y%m%d-%H%M%S")
+  - export IMAGE_TAG="${DATE_TAG}-${CI_COMMIT_SHORT_SHA}-giteaci"
 
 # ==================== 阶段1: 检测项目类型 ====================
 detect-project-type:
@@ -60,7 +63,7 @@ detect-project-type:
         PROJECT_TYPE="docker"
         echo "  ✓ 检测到通用Docker项目"
       else
-        echo "  ⚠️ 未检测到项目类型，使用默认Docker构建"
+        echo "  ⚠️ 未检测到项目类型,使用默认Docker构建"
         PROJECT_TYPE="docker"
       fi
       
@@ -109,7 +112,7 @@ EOF
       echo "  → 镜像仓库: ${IMAGE_REGISTRY}"
       echo "  → 认证格式: auth字符串"
       
-      # 验证认证文件（调试用，隐藏完整auth）
+      # 验证认证文件（调试用,隐藏完整auth）
       echo "  → 认证文件内容（已隐藏）:"
       cat /kaniko/.docker/config.json | sed 's/"auth": "[^"]*"/"auth": "***HIDDEN***"/g'
 
