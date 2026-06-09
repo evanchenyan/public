@@ -1,0 +1,66 @@
+# ============================================
+# Gitea + Runner 本地部署编排
+# 用于快速搭建 Gitea CI/CD 环境
+# ============================================
+version: '3.8'
+
+services:
+  # ==========================================
+  # Gitea 代码托管
+  # ==========================================
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      # 数据库
+      - GITEA__database__DB_TYPE=sqlite3
+      # 服务器
+      - GITEA__server__DOMAIN=localhost
+      - GITEA__server__SSH_DOMAIN=localhost
+      - GITEA__server__ROOT_URL=http://localhost:3000
+      - GITEA__server__HTTP_PORT=3000
+      # Actions 开关
+      - GITEA__actions__ENABLED=true
+    ports:
+      - "3000:3000"   # Web UI
+      - "2222:22"     # SSH (避免与宿主机冲突)
+    volumes:
+      - ./data/gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  # ==========================================
+  # Gitea Actions Runner（需要先注册）
+  # ==========================================
+  # 注意：此服务首次启动前需手动注册 Runner
+  # 注册命令见 DEPLOY.md
+  runner:
+    image: gitea/act_runner:0.2.11
+    container_name: gitea-runner
+    restart: unless-stopped
+    depends_on:
+      - gitea
+    environment:
+      - GITEA_INSTANCE_URL=http://gitea:3000
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Runner 需要 Docker
+      - ./data/runner:/data
+      # 挂载 Kaniko 执行器（如果 Runner 镜像不含 kaniko）
+      # - ./bin/kaniko-executor:/kaniko/executor:ro
+    # 首次启动时自动注册
+    command: >
+      sh -c "
+      if [ ! -f /data/.runner ]; then
+        act_runner register \
+          --instance http://gitea:3000 \
+          --token ${GITEA_RUNNER_TOKEN} \
+          --name docker-runner \
+          --no-interactive && \
+        touch /data/.runner
+      fi &&
+      act_runner daemon
+      "

@@ -1,0 +1,77 @@
+# ============================================
+# Java 后端 CI 工作流
+# 触发条件：backend-java/ 目录变更
+# 流程：检出 → Maven 构建 → Kaniko 镜像打包推送
+# ============================================
+name: CI - Java Backend
+
+on:
+  push:
+    paths:
+      - 'backend-java/**'
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'backend-java/**'
+    branches:
+      - main
+
+env:
+  REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+  REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+  REGISTRY_PASS: ${{ secrets.REGISTRY_PASSWORD }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------
+      # Step 1: 检出代码
+      # -------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -------------------------------------------
+      # Step 2: 设置 Java 环境（带 Maven 缓存）
+      # -------------------------------------------
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # -------------------------------------------
+      # Step 3: Maven 编译打包（跳过测试）
+      # -------------------------------------------
+      - name: Maven Build
+        working-directory: backend-java
+        run: |
+          mvn clean package \
+            -DskipTests \
+            -Dapp.version=${GITHUB_REF_NAME:-dev} \
+            -B -q
+
+      # -------------------------------------------
+      # Step 4: 用 Kaniko 构建并推送镜像
+      # -------------------------------------------
+      - name: Kaniko Build & Push
+        run: |
+          # 确定镜像标签
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.ref_name }}-${{ github.sha }}"
+          fi
+
+          chmod +x scripts/kaniko-build.sh
+          scripts/kaniko-build.sh \
+            backend-java \
+            backend-java/Dockerfile \
+            backend-java \
+            "${TAG}"

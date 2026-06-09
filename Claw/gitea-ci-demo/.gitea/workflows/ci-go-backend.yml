@@ -1,0 +1,76 @@
+# ============================================
+# Go 后端 CI 工作流
+# 触发条件：backend-go/ 目录变更
+# 流程：检出 → Go 构建 → Kaniko 镜像打包推送
+# ============================================
+name: CI - Go Backend
+
+on:
+  push:
+    paths:
+      - 'backend-go/**'
+    branches:
+      - main
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'backend-go/**'
+    branches:
+      - main
+
+env:
+  # 镜像仓库地址（不含协议前缀），如 harbor.example.com/demo
+  REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+  REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+  REGISTRY_PASS: ${{ secrets.REGISTRY_PASSWORD }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    # Go 后端专用标签，确保 Runner 有 kaniko
+    # 如果你的 Runner 有不同的标签，修改这里
+
+    steps:
+      # -------------------------------------------
+      # Step 1: 检出代码
+      # -------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -------------------------------------------
+      # Step 2: 设置 Go 环境
+      # -------------------------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      # -------------------------------------------
+      # Step 3: Go 编译检查
+      # -------------------------------------------
+      - name: Build Go
+        working-directory: backend-go
+        run: |
+          go mod download
+          CGO_ENABLED=0 go build -o app .
+
+      # -------------------------------------------
+      # Step 4: 用 Kaniko 构建并推送镜像
+      # -------------------------------------------
+      - name: Kaniko Build & Push
+        run: |
+          # 确定镜像标签
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="${{ github.ref_name }}-${{ github.sha }}"
+          fi
+
+          chmod +x scripts/kaniko-build.sh
+          scripts/kaniko-build.sh \
+            backend-go \
+            backend-go/Dockerfile \
+            backend-go \
+            "${TAG}"

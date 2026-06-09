@@ -1,0 +1,26 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+backend-go/app
+
+# Java
+backend-java/target/
+*.class
+*.jar
+*.war
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gitea CI Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 48px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+      text-align: center;
+      max-width: 480px;
+      width: 90%;
+    }
+    h1 { color: #333; margin-bottom: 8px; font-size: 28px; }
+    .subtitle { color: #888; margin-bottom: 32px; font-size: 14px; }
+    .status-grid {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .card {
+      background: #f8f9fa;
+      border-radius: 10px;
+      padding: 16px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: 2px solid transparent;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+      border-color: #667eea;
+    }
+    .card.success { border-color: #10b981; }
+    .card h3 { color: #333; margin-bottom: 4px; font-size: 16px; }
+    .card p { color: #666; font-size: 13px; }
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .dot-green { background: #10b981; }
+    .dot-red { background: #ef4444; }
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #5a6fd6; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
