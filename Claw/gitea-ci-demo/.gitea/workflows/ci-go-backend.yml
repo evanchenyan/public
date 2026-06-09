@@ -62,11 +62,7 @@ jobs:
       - name: Kaniko Build & Push
         run: |
           # 确定镜像标签
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG="${{ github.ref_name }}"
-          else
-            TAG="${{ github.ref_name }}-${{ github.sha }}"
-          fi
+          TAG=($(date +"%y%m%d_%H%M%S_giteaci"))
 
           chmod +x scripts/kaniko-build.sh
           scripts/kaniko-build.sh \
