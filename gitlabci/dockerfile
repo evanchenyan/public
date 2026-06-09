@@ -1,0 +1,87 @@
+# 优化版Go Dockerfile - 保持原有特性，增强缓存和构建效率
+# 使用具体版本标签确保可重现构建
+FROM golang:1.16.15-alpine3.15 AS build
+
+# 安装必要的构建工具（distroless需要，alpine已包含基础工具）
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /app
+
+# 优化1: 先复制依赖文件，利用Docker缓存
+# 这样只有go.mod/go.sum变化时才重新下载依赖
+COPY go.mod go.sum ./
+
+# 设置Go代理加速依赖下载（可选，通过构建参数传入）
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG GOSUMDB=sum.golang.org
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+ENV GO111MODULE=on
+
+# 下载依赖（带详细输出，便于排障）
+RUN echo "开始下载Go模块依赖..." && \
+    go mod download -x && \
+    echo "依赖下载完成"
+
+# 复制源代码（变化频繁，放在后面）
+COPY . ./
+
+# 编译参数（保持原有的SKAFFOLD支持）
+ARG SKAFFOLD_GO_GCFLAGS
+ARG LDFLAGS="-s -w"  # 优化: 减小二进制大小
+RUN echo "Go版本: $(go version)" && \
+    echo "Go gcflags: ${SKAFFOLD_GO_GCFLAGS}" && \
+    echo "链接参数: ${LDFLAGS}"
+
+# 优化2: 添加编译信息注入（便于追溯）
+ARG BUILD_TIME
+ARG GIT_COMMIT
+ARG GIT_VERSION
+RUN echo "构建时间: ${BUILD_TIME}" && \
+    echo "Git Commit: ${GIT_COMMIT}" && \
+    echo "版本: ${GIT_VERSION}"
+
+# 编译应用
+# -mod=readonly: 确保不会修改go.mod/go.sum
+# -v: 详细输出编译的包
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -gcflags="${SKAFFOLD_GO_GCFLAGS}" \
+    -ldflags="${LDFLAGS} -X main.Version=${GIT_VERSION} -X main.Commit=${GIT_COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -mod=readonly \
+    -v \
+    -o /app/backend .
+
+# 优化3: 运行阶段 - 使用更小的distroless静态镜像
+FROM gcr.io/distroless/static-debian11:nonroot
+
+# 保持原有GOTRACEBACK环境变量
+ENV GOTRACEBACK=single
+
+# 设置非root用户运行（安全最佳实践）
+USER nonroot:nonroot
+
+WORKDIR /app
+
+# 复制二进制文件
+COPY --from=build --chown=nonroot:nonroot /app/backend /app/backend
+
+# 如果需要时区信息，从构建阶段复制
+COPY --from=build /usr/share/zoneinfo /usr/share/zoneinfo
+
+# 健康检查（可选，根据应用需要调整）
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/app/backend", "health"] || exit 1
+
+# 暴露端口（根据实际应用修改）
+EXPOSE 8080
+
+# 运行应用
+ENTRYPOINT ["/app/backend"]
+
+# 优化4: 添加元数据标签（便于镜像管理）
+LABEL maintainer="${CI_PROJECT_NAMESPACE}" \
+      org.opencontainers.image.title="${CI_PROJECT_TITLE}" \
+      org.opencontainers.image.description="${CI_PROJECT_DESCRIPTION}" \
+      org.opencontainers.image.version="${GIT_VERSION}" \
+      org.opencontainers.image.revision="${CI_COMMIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_TIME}"

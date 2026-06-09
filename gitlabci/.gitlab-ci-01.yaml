@@ -1,0 +1,409 @@
+# .gitlab-ci.yml - 通用CI配置，使用auth字符串认证
+stages:
+  - detect
+  - build-and-push
+  - print-completion
+
+variables:
+  # 镜像仓库配置（请根据实际环境修改）
+  IMAGE_REGISTRY: "your-registry.example.com"  # 修改为实际仓库地址
+  IMAGE_NAMESPACE: "your-namespace"            # 修改为命名空间/项目名
+  IMAGE_NAME: "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
+  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
+  
+  # Kaniko 配置
+  KANIKO_IMAGE: "gcr.io/kaniko-project/executor:debug"
+  DOCKERFILE_PATH: "Dockerfile"
+  CONTEXT_DIR: "."
+  
+  # Go 构建缓存
+  GO_MOD_CACHE: "${CI_PROJECT_DIR}/.go-cache"
+
+# 缓存配置
+cache:
+  paths:
+    - .go-cache/
+    - .m2/repository/
+
+before_script:
+  - echo "==========================================="
+  - echo "开始执行CI任务 - ${CI_JOB_NAME}"
+  - echo "Pipeline ID: ${CI_PIPELINE_ID}"
+  - echo "Commit SHA: ${CI_COMMIT_SHORT_SHA}"
+  - echo "镜像地址: ${IMAGE_NAME}:${IMAGE_TAG}"
+  - echo "执行时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+  - echo "==========================================="
+
+# ==================== 阶段1: 检测项目类型 ====================
+detect-project-type:
+  stage: detect
+  image: alpine:latest
+  script:
+    - echo "步骤1/3: 扫描项目文件结构"
+    - echo "  → 当前目录: $(pwd)"
+    - ls -la | head -20
+    
+    - echo "步骤2/3: 检测项目类型"
+    - |
+      PROJECT_TYPE="unknown"
+      
+      if [ -f "pom.xml" ]; then
+        PROJECT_TYPE="java-maven"
+        echo "  ✓ 检测到Maven项目"
+      elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+        PROJECT_TYPE="java-gradle"
+        echo "  ✓ 检测到Gradle项目"
+      elif [ -f "go.mod" ]; then
+        PROJECT_TYPE="go"
+        echo "  ✓ 检测到Go项目"
+      elif [ -f "Dockerfile" ]; then
+        PROJECT_TYPE="docker"
+        echo "  ✓ 检测到通用Docker项目"
+      else
+        echo "  ⚠️ 未检测到项目类型，使用默认Docker构建"
+        PROJECT_TYPE="docker"
+      fi
+      
+      echo "PROJECT_TYPE=${PROJECT_TYPE}" >> project.env
+      echo "  → 最终项目类型: ${PROJECT_TYPE}"
+    
+    - echo "步骤3/3: 输出检测结果"
+    - cat project.env
+    - echo "=========================================="
+  artifacts:
+    reports:
+      dotenv: project.env
+    expire_in: 1 hour
+  tags:
+    - docker
+
+# ==================== 公共认证模板 ====================
+.kaniko-setup:
+  script:
+    - echo "🔐 配置镜像仓库认证（方式一：auth字符串）"
+    - |
+      # 检查认证变量是否存在
+      if [ -z "${REGISTRY_AUTH}" ]; then
+        echo "❌ 错误: 缺少REGISTRY_AUTH变量"
+        echo "💡 请在GitLab CI/CD变量中配置:"
+        echo "   - REGISTRY_AUTH: base64编码的'用户名:密码'"
+        echo "   - 生成方式: echo -n 'username:password' | base64"
+        exit 1
+      fi
+      
+      # 创建认证目录
+      mkdir -p /kaniko/.docker
+      
+      # 创建config.json认证文件（使用auth字段）
+      cat > /kaniko/.docker/config.json <<EOF
+{
+  "auths": {
+    "${IMAGE_REGISTRY}": {
+      "auth": "${REGISTRY_AUTH}"
+    }
+  }
+}
+EOF
+      
+      echo "✓ Docker认证配置已创建: /kaniko/.docker/config.json"
+      echo "  → 镜像仓库: ${IMAGE_REGISTRY}"
+      echo "  → 认证格式: auth字符串"
+      
+      # 验证认证文件（调试用，隐藏完整auth）
+      echo "  → 认证文件内容（已隐藏）:"
+      cat /kaniko/.docker/config.json | sed 's/"auth": "[^"]*"/"auth": "***HIDDEN***"/g'
+
+.verify-image:
+  script:
+    - echo "✓ 验证镜像是否成功推送"
+    - |
+      skopeo inspect "docker://${IMAGE_NAME}:${IMAGE_TAG}" \
+        --authfile /kaniko/.docker/config.json > /tmp/inspect.json 2>&1
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ 镜像验证成功"
+        echo "  → 镜像摘要: $(cat /tmp/inspect.json | grep -o '"Digest": "[^"]*"' | cut -d'"' -f4)"
+        echo "  → 镜像大小: $(cat /tmp/inspect.json | grep -o '"Size": [0-9]*' | cut -d' ' -f2 | numfmt --to=iec 2>/dev/null || echo '计算中')"
+        echo "  → 创建时间: $(cat /tmp/inspect.json | grep -o '"Created": "[^"]*"' | cut -d'"' -f4)"
+      else
+        echo "❌ 镜像验证失败"
+        cat /tmp/inspect.json
+        exit 1
+      fi
+
+# ==================== 阶段2: 构建镜像 ====================
+# Go 项目构建
+build-go:
+  stage: build-and-push
+  image:
+    name: ${KANIKO_IMAGE}
+    entrypoint: [""]
+  before_script:
+    - !reference [.kaniko-setup, script]
+  script:
+    - echo "🚀 开始构建 Go 项目"
+    - echo "步骤1/8: 项目信息"
+    - echo "  → Go版本: $(grep "^go " go.mod | awk '{print $2}')"
+    - echo "  → Module名称: $(grep "^module " go.mod | awk '{print $2}')"
+    
+    - echo "步骤2/8: 显示go.mod内容"
+    - cat go.mod
+    
+    - echo "步骤3/8: 检查Go源文件"
+    - echo "  → .go文件数量: $(find . -name "*.go" -not -path "./vendor/*" | wc -l)"
+    
+    - echo "步骤4/8: 设置构建参数"
+    - export BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+    - export GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}"
+    - echo "  → BUILD_TIME: ${BUILD_TIME}"
+    - echo "  → GOPROXY: ${GOPROXY}"
+    
+    - echo "步骤5/8: 检查Dockerfile"
+    - head -30 ${DOCKERFILE_PATH} || echo "Dockerfile不存在"
+    
+    - echo "步骤6/8: 执行Kaniko构建并推送"
+    - |
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --destination="${IMAGE_NAME}:latest" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/kaniko-cache" \
+        --cache-ttl=168h \
+        --build-arg="GOPROXY=${GOPROXY}" \
+        --build-arg="BUILD_TIME=${BUILD_TIME}" \
+        --build-arg="GIT_COMMIT=${CI_COMMIT_SHORT_SHA}" \
+        --verbosity=debug \
+        --snapshotMode=redo \
+        --cleanup 2>&1 | tee /tmp/kaniko.log
+      
+      if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "❌ 构建失败！"
+        echo "错误日志最后50行:"
+        tail -50 /tmp/kaniko.log
+        exit 1
+      fi
+    
+    - echo "步骤7/8: 验证镜像"
+    - !reference [.verify-image, script]
+    
+    - echo "步骤8/8: 构建完成"
+    - echo "✅ Go项目镜像构建并推送成功"
+    - echo "  → ${IMAGE_NAME}:${IMAGE_TAG}"
+    - echo "  → ${IMAGE_NAME}:latest"
+  after_script:
+    - rm -f /tmp/kaniko.log /tmp/inspect.json
+  only:
+    variables:
+      - $PROJECT_TYPE == "go"
+  tags:
+    - docker
+  dependencies:
+    - detect-project-type
+
+# Java Maven 项目构建
+build-java-maven:
+  stage: build-and-push
+  image:
+    name: ${KANIKO_IMAGE}
+    entrypoint: [""]
+  before_script:
+    - !reference [.kaniko-setup, script]
+  script:
+    - echo "🚀 开始构建 Java Maven 项目"
+    - echo "步骤1/7: 项目信息"
+    - grep -E "<groupId>|<artifactId>|<version>" pom.xml | head -5
+    
+    - echo "步骤2/7: 设置Maven缓存"
+    - export MAVEN_OPTS="-Dmaven.repo.local=/cache/maven"
+    
+    - echo "步骤3/7: 检查Dockerfile"
+    - head -30 ${DOCKERFILE_PATH} || echo "Dockerfile不存在"
+    
+    - echo "步骤4/7: 执行Kaniko构建"
+    - |
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --destination="${IMAGE_NAME}:latest" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/kaniko-cache" \
+        --build-arg="MAVEN_OPTS=${MAVEN_OPTS}" \
+        --verbosity=debug \
+        --cleanup 2>&1 | tee /tmp/kaniko.log
+      
+      if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "❌ 构建失败！"
+        tail -50 /tmp/kaniko.log
+        exit 1
+      fi
+    
+    - echo "步骤5/7: 验证镜像"
+    - !reference [.verify-image, script]
+    
+    - echo "步骤6/7: 构建完成"
+    - echo "✅ Java Maven项目镜像构建并推送成功"
+  after_script:
+    - rm -f /tmp/kaniko.log /tmp/inspect.json
+  only:
+    variables:
+      - $PROJECT_TYPE == "java-maven"
+  tags:
+    - docker
+  dependencies:
+    - detect-project-type
+
+# Java Gradle 项目构建
+build-java-gradle:
+  stage: build-and-push
+  image:
+    name: ${KANIKO_IMAGE}
+    entrypoint: [""]
+  before_script:
+    - !reference [.kaniko-setup, script]
+  script:
+    - echo "🚀 开始构建 Java Gradle 项目"
+    - echo "步骤1/6: 项目信息"
+    - head -20 build.gradle 2>/dev/null || head -20 build.gradle.kts
+    
+    - echo "步骤2/6: 设置Gradle缓存"
+    - export GRADLE_USER_HOME="/cache/gradle"
+    
+    - echo "步骤3/6: 检查Dockerfile"
+    - head -30 ${DOCKERFILE_PATH} || echo "Dockerfile不存在"
+    
+    - echo "步骤4/6: 执行Kaniko构建"
+    - |
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --destination="${IMAGE_NAME}:latest" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/kaniko-cache" \
+        --build-arg="GRADLE_USER_HOME=${GRADLE_USER_HOME}" \
+        --verbosity=debug \
+        --cleanup 2>&1 | tee /tmp/kaniko.log
+      
+      if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "❌ 构建失败！"
+        tail -50 /tmp/kaniko.log
+        exit 1
+      fi
+    
+    - echo "步骤5/6: 验证镜像"
+    - !reference [.verify-image, script]
+    
+    - echo "步骤6/6: 构建完成"
+    - echo "✅ Java Gradle项目镜像构建并推送成功"
+  after_script:
+    - rm -f /tmp/kaniko.log /tmp/inspect.json
+  only:
+    variables:
+      - $PROJECT_TYPE == "java-gradle"
+  tags:
+    - docker
+  dependencies:
+    - detect-project-type
+
+# 通用 Docker 项目构建
+build-docker:
+  stage: build-and-push
+  image:
+    name: ${KANIKO_IMAGE}
+    entrypoint: [""]
+  before_script:
+    - !reference [.kaniko-setup, script]
+  script:
+    - echo "🐳 开始构建通用 Docker 项目"
+    - echo "步骤1/5: 检查Dockerfile"
+    - cat ${DOCKERFILE_PATH}
+    
+    - echo "步骤2/5: 检查构建上下文"
+    - echo "  → 上下文文件数: $(find ${CONTEXT_DIR} -type f | wc -l)"
+    - echo "  → 上下文大小: $(du -sh ${CONTEXT_DIR} | awk '{print $1}')"
+    
+    - echo "步骤3/5: 执行Kaniko构建"
+    - |
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --destination="${IMAGE_NAME}:latest" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/kaniko-cache" \
+        --verbosity=debug \
+        --cleanup 2>&1 | tee /tmp/kaniko.log
+      
+      if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "❌ 构建失败！"
+        tail -50 /tmp/kaniko.log
+        exit 1
+      fi
+    
+    - echo "步骤4/5: 验证镜像"
+    - !reference [.verify-image, script]
+    
+    - echo "步骤5/5: 构建完成"
+    - echo "✅ 通用Docker项目镜像构建并推送成功"
+  after_script:
+    - rm -f /tmp/kaniko.log /tmp/inspect.json
+  only:
+    variables:
+      - $PROJECT_TYPE == "docker"
+  tags:
+    - docker
+  dependencies:
+    - detect-project-type
+
+# ==================== 阶段3: 完成总结 ====================
+print-completion:
+  stage: print-completion
+  image: alpine:latest
+  script:
+    - echo ""
+    - echo "╔════════════════════════════════════════════════════════════════════╗"
+    - echo "║                     🎉 CI/CD 流程执行完成 🎉                       ║"
+    - echo "╚════════════════════════════════════════════════════════════════════╝"
+    - echo ""
+    - echo "📊 构建摘要:"
+    - echo "  • 项目: ${CI_PROJECT_PATH}"
+    - echo "  • 分支: ${CI_COMMIT_REF_NAME}"
+    - echo "  • Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "  • 项目类型: ${PROJECT_TYPE:-unknown}"
+    - echo "  • 镜像标签: ${IMAGE_TAG}"
+    - echo "  • 完整镜像: ${IMAGE_NAME}:${IMAGE_TAG}"
+    - echo "  • Latest标签: ${IMAGE_NAME}:latest"
+    - echo ""
+    - echo "🔄 FluxCD 自动化部署:"
+    - echo "  1. FluxCD 监控镜像仓库变化"
+    - echo "  2. 自动拉取新镜像: ${IMAGE_TAG}"
+    - echo "  3. 查看同步状态: flux get kustomizations"
+    - echo "  4. 手动触发: flux reconcile kustomization <应用名>"
+    - echo ""
+    - echo "🔧 手动验证镜像:"
+    - echo "  docker pull ${IMAGE_NAME}:${IMAGE_TAG}"
+    - echo "  docker run ${IMAGE_NAME}:${IMAGE_TAG}"
+    - echo ""
+    - echo "📝 排障提示:"
+    - echo "  • 认证失败: 检查 REGISTRY_AUTH 是否正确生成"
+    - echo "  • 推送失败: 确认镜像仓库地址和权限"
+    - echo "  • 构建失败: 查看上面的Kaniko详细日志"
+    - echo ""
+    - echo "✅ 完成时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    - echo "════════════════════════════════════════════════════════════════════"
+  only:
+    - main
+    - master
+    - develop
+    - /^release\/.*$/
+  needs:
+    - detect-project-type
+    - build-go
+    - build-java-maven
+    - build-java-gradle
+    - build-docker
+  tags:
+    - docker
