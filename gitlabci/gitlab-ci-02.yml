@@ -1,25 +1,38 @@
 # .gitlab-ci.yml
 # =============================================================================
-# GitLab CI/CD Pipeline: 自动检测项目类型 → 构建镜像 → 推送到容器仓库
+# GitLab CI/CD Pipeline: build image -> push to registry
 #
-# 注意: YAML linter 对 !reference 标签的警告可忽略，这是 GitLab CI 原生语法。
+# Configure the following in GitLab Settings > CI/CD > Variables:
+#   - IMAGE_REGISTRY     : registry host (e.g. harbor.example.com)
+#   - REGISTRY_USER      : registry username
+#   - REGISTRY_PASSWORD  : registry password/token
+#   - KANIKO_VERBOSITY   : (optional) kaniko log level, default: info
 #
-# 使用前请在 GitLab 项目的 Settings > CI/CD > Variables 中配置以下变量:
-#   - IMAGE_REGISTRY     : 镜像仓库地址 (如 harbor.example.com)
-#   - IMAGE_NAMESPACE    : 镜像命名空间/项目 (如 my-project)
-#   - REGISTRY_USER      : 镜像仓库用户名
-#   - REGISTRY_PASSWORD  : 镜像仓库密码/Token
-#   - KANIKO_VERBOSITY   : (可选) Kaniko 日志级别，默认 info，可选 debug/trace
+# Configure the following in .ci-config at project root:
+#   - IMAGE_NAMESPACE_PROD : namespace for main/master/prod branches
+#   - IMAGE_NAMESPACE_QA   : namespace for all other branches
+#
+# Example .ci-config:
+#   IMAGE_NAMESPACE_PROD=prod-starfire
+#   IMAGE_NAMESPACE_QA=starfire-qa
 # =============================================================================
 
+# ==================== pipeline-level branch filter ====================
+# Only the following branches trigger a pipeline:
+#   dev-* / test-* / stg-* / uat-* / prod-* / master / main / develop
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^(dev|test|stg|uat|prod)-.+$/'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - when: never
+
 stages:
-  - detect
   - build-and-push
   - report
 
 variables:
-  IMAGE_NAME: "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
-  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}"
   KANIKO_IMAGE: "gcr.io/kaniko-project/executor:debug"
   DOCKERFILE_PATH: "Dockerfile"
   CONTEXT_DIR: "."
@@ -28,169 +41,165 @@ variables:
   GRADLE_USER_HOME: "/home/gradle/.gradle"
   GOPROXY: "https://proxy.golang.org,direct"
 
-# ==================== 公共模板 ====================
+# ==================== stage 1: build ====================
 
-# 认证 + 打印头部信息，供各 build job 通过 !reference 引用
-.job-header:
-  before_script:
-    - echo "==========================================="
-    - echo "🔧 任务: ${CI_JOB_NAME}"
-    - echo "📍 Pipeline: #${CI_PIPELINE_ID}"
-    - echo "📝 Commit: ${CI_COMMIT_SHORT_SHA}"
-    - echo "⏰ 时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-    - echo "==========================================="
-
-.kaniko-auth:
-  before_script:
-    - |
-      if [ -z "${REGISTRY_USER}" ] || [ -z "${REGISTRY_PASSWORD}" ]; then
-        echo "❌ 缺少必要变量! 请配置 REGISTRY_USER / REGISTRY_PASSWORD"
-        exit 1
-      fi
-    - echo "🔐 配置镜像仓库认证 → ${IMAGE_REGISTRY} (用户: ${REGISTRY_USER})"
-    - mkdir -p /kaniko/.docker
-    - |
-      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
-        "${IMAGE_REGISTRY}" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" \
-        > /kaniko/.docker/config.json
-    - echo "✅ 认证配置完成"
-
-# 通用 Kaniko 构建片段，接受可选的额外 build-arg 参数 $EXTRA_BUILD_ARGS
-.kaniko-build-script:
-  script:
-    - echo "📄 Dockerfile 检查:"
-    - |
-      if [ ! -f "${DOCKERFILE_PATH}" ]; then
-        echo "❌ Dockerfile 不存在: ${DOCKERFILE_PATH}"
-        exit 1
-      fi
-      echo "  ✅ Dockerfile 存在"
-    - echo "🏗️ Kaniko 构建 → ${IMAGE_NAME}:${IMAGE_TAG}"
-    - |
-      set -o pipefail
-      /kaniko/executor \
-        --context="${CONTEXT_DIR}" \
-        --dockerfile="${DOCKERFILE_PATH}" \
-        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
-        --destination="${IMAGE_NAME}:latest" \
-        --cache=true \
-        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}/cache" \
-        --verbosity="${KANIKO_VERBOSITY}" \
-        --cleanup \
-        ${EXTRA_BUILD_ARGS} \
-        2>&1 | tee /tmp/kaniko.log
-      KANIKO_EXIT=${PIPESTATUS[0]}
-      if [ ${KANIKO_EXIT} -ne 0 ]; then
-        echo "❌ Kaniko 构建失败 (退出码: ${KANIKO_EXIT})"
-        exit ${KANIKO_EXIT}
-      fi
-    - echo "✅ 构建并推送成功 → ${IMAGE_NAME}:${IMAGE_TAG}"
-
-# ==================== 阶段1: 检测项目类型 ====================
-
-detect-project-type:
-  stage: detect
-  image: alpine:latest
-  before_script:
-    - !reference [.job-header, before_script]
-  script:
-    - echo "📋 扫描项目文件结构"
-    - ls -la
-    - echo "🔍 检测项目类型..."
-    - PROJECT_TYPE="docker"
-    - |
-      if [ -f "pom.xml" ]; then
-        PROJECT_TYPE="java-maven"
-        echo "✅ 检测到 Maven 项目 (pom.xml)"
-      elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-        PROJECT_TYPE="java-gradle"
-        echo "✅ 检测到 Gradle 项目"
-      elif [ -f "go.mod" ]; then
-        PROJECT_TYPE="go"
-        echo "✅ 检测到 Go 项目 (go.mod)"
-      else
-        echo "⚠️ 未检测到特定项目标识，使用默认 Docker 构建"
-      fi
-    - echo "PROJECT_TYPE=${PROJECT_TYPE}" > project.env
-    - echo "📤 最终项目类型: ${PROJECT_TYPE}"
-  artifacts:
-    reports:
-      dotenv: project.env
-    paths:
-      - project.env
-    expire_in: 1 hour
-  tags:
-    - docker
-
-# ==================== 阶段2: 构建镜像 ====================
-
-# Go 项目
 build-go:
   stage: build-and-push
   image:
     name: ${KANIKO_IMAGE}
     entrypoint: [""]
-  before_script:
-    - !reference [.job-header, before_script]
-    - !reference [.kaniko-auth, before_script]
   script:
-    - echo "🚀 Go 项目构建"
-    - GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
-    - MODULE_NAME=$(grep '^module ' go.mod | awk '{print $2}')
-    - echo "  → Go 版本: ${GO_VERSION} | Module: ${MODULE_NAME}"
-    - BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
-    - GIT_VERSION=${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}
-    - >
-      EXTRA_BUILD_ARGS="--build-arg=GOPROXY=${GOPROXY}
-      --build-arg=BUILD_TIME=${BUILD_TIME}
-      --build-arg=GIT_COMMIT=${CI_COMMIT_SHORT_SHA}
-      --build-arg=GIT_VERSION=${GIT_VERSION}"
-    - !reference [.kaniko-build-script, script]
+    - |
+      if [ -z "${REGISTRY_USER}" ] || [ -z "${REGISTRY_PASSWORD}" ]; then
+        echo "ERROR: missing REGISTRY_USER or REGISTRY_PASSWORD"
+        exit 1
+      fi
+      if [ ! -f ".ci-config" ]; then
+        echo "ERROR: .ci-config not found"
+        exit 1
+      fi
+      . ./.ci-config
+      case "${CI_COMMIT_REF_NAME}" in
+        main|master|prod) IMAGE_NAMESPACE="${IMAGE_NAMESPACE_PROD}" ;;
+        *)                IMAGE_NAMESPACE="${IMAGE_NAMESPACE_QA}" ;;
+      esac
+      IMAGE_NAME="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
+      IMAGE_TAG="$(date -u '+%y.%m.%d%H%M')-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_SLUG}.gitlabci"
+      echo "namespace=${IMAGE_NAMESPACE} image=${IMAGE_NAME}:${IMAGE_TAG}"
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
+        "${IMAGE_REGISTRY}" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" \
+        > /kaniko/.docker/config.json
+      GO_VERSION=$(grep '^go ' go.mod | awk '{print $2}')
+      MODULE_NAME=$(grep '^module ' go.mod | awk '{print $2}')
+      echo "go_version=${GO_VERSION} module=${MODULE_NAME}"
+      BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+      GIT_VERSION=${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}/cache" \
+        --build-arg="GOPROXY=${GOPROXY}" \
+        --build-arg="BUILD_TIME=${BUILD_TIME}" \
+        --build-arg="GIT_COMMIT=${CI_COMMIT_SHORT_SHA}" \
+        --build-arg="GIT_VERSION=${GIT_VERSION}" \
+        --verbosity="${KANIKO_VERBOSITY}" \
+        --cleanup
   rules:
+    - exists:
+        - pom.xml
+      when: never
+    - exists:
+        - build.gradle
+      when: never
+    - exists:
+        - build.gradle.kts
+      when: never
     - exists:
         - go.mod
         - Dockerfile
   tags:
     - docker
 
-# Java Maven 项目
 build-java-maven:
   stage: build-and-push
   image:
     name: ${KANIKO_IMAGE}
     entrypoint: [""]
-  before_script:
-    - !reference [.job-header, before_script]
-    - !reference [.kaniko-auth, before_script]
   script:
-    - echo "🚀 Java Maven 项目构建"
-    - echo "📄 pom.xml 信息:"
-    - grep -E "<groupId>|<artifactId>|<version>" pom.xml | head -5 || true
-    - EXTRA_BUILD_ARGS="--build-arg=MAVEN_OPTS=${MAVEN_REPO_LOCAL}"
-    - !reference [.kaniko-build-script, script]
+    - |
+      if [ -z "${REGISTRY_USER}" ] || [ -z "${REGISTRY_PASSWORD}" ]; then
+        echo "ERROR: missing REGISTRY_USER or REGISTRY_PASSWORD"
+        exit 1
+      fi
+      if [ ! -f ".ci-config" ]; then
+        echo "ERROR: .ci-config not found"
+        exit 1
+      fi
+      . ./.ci-config
+      case "${CI_COMMIT_REF_NAME}" in
+        main|master|prod) IMAGE_NAMESPACE="${IMAGE_NAMESPACE_PROD}" ;;
+        *)                IMAGE_NAMESPACE="${IMAGE_NAMESPACE_QA}" ;;
+      esac
+      IMAGE_NAME="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
+      IMAGE_TAG="$(date -u '+%y.%m.%d%H%M')-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_SLUG}.gitlabci"
+      echo "namespace=${IMAGE_NAMESPACE} image=${IMAGE_NAME}:${IMAGE_TAG}"
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
+        "${IMAGE_REGISTRY}" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" \
+        > /kaniko/.docker/config.json
+      grep -E "<groupId>|<artifactId>|<version>" pom.xml | head -5 || true
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}/cache" \
+        --build-arg="MAVEN_OPTS=${MAVEN_REPO_LOCAL}" \
+        --verbosity="${KANIKO_VERBOSITY}" \
+        --cleanup
   rules:
+    - exists:
+        - go.mod
+      when: never
+    - exists:
+        - build.gradle
+      when: never
+    - exists:
+        - build.gradle.kts
+      when: never
     - exists:
         - pom.xml
         - Dockerfile
   tags:
     - docker
 
-# Java Gradle 项目
 build-java-gradle:
   stage: build-and-push
   image:
     name: ${KANIKO_IMAGE}
     entrypoint: [""]
-  before_script:
-    - !reference [.job-header, before_script]
-    - !reference [.kaniko-auth, before_script]
   script:
-    - echo "🚀 Java Gradle 项目构建"
-    - echo "📄 build.gradle 信息:"
-    - head -20 build.gradle 2>/dev/null || head -20 build.gradle.kts 2>/dev/null || true
-    - EXTRA_BUILD_ARGS="--build-arg=GRADLE_USER_HOME=${GRADLE_USER_HOME}"
-    - !reference [.kaniko-build-script, script]
+    - |
+      if [ -z "${REGISTRY_USER}" ] || [ -z "${REGISTRY_PASSWORD}" ]; then
+        echo "ERROR: missing REGISTRY_USER or REGISTRY_PASSWORD"
+        exit 1
+      fi
+      if [ ! -f ".ci-config" ]; then
+        echo "ERROR: .ci-config not found"
+        exit 1
+      fi
+      . ./.ci-config
+      case "${CI_COMMIT_REF_NAME}" in
+        main|master|prod) IMAGE_NAMESPACE="${IMAGE_NAMESPACE_PROD}" ;;
+        *)                IMAGE_NAMESPACE="${IMAGE_NAMESPACE_QA}" ;;
+      esac
+      IMAGE_NAME="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
+      IMAGE_TAG="$(date -u '+%y.%m.%d%H%M')-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_SLUG}.gitlabci"
+      echo "namespace=${IMAGE_NAMESPACE} image=${IMAGE_NAME}:${IMAGE_TAG}"
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
+        "${IMAGE_REGISTRY}" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" \
+        > /kaniko/.docker/config.json
+      head -20 build.gradle 2>/dev/null || head -20 build.gradle.kts 2>/dev/null || true
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}/cache" \
+        --build-arg="GRADLE_USER_HOME=${GRADLE_USER_HOME}" \
+        --verbosity="${KANIKO_VERBOSITY}" \
+        --cleanup
   rules:
+    - exists:
+        - go.mod
+      when: never
+    - exists:
+        - pom.xml
+      when: never
     - exists:
         - build.gradle
         - Dockerfile
@@ -200,19 +209,41 @@ build-java-gradle:
   tags:
     - docker
 
-# 通用 Docker 项目 (无特定项目类型时触发)
 build-docker:
   stage: build-and-push
   image:
     name: ${KANIKO_IMAGE}
     entrypoint: [""]
-  before_script:
-    - !reference [.job-header, before_script]
-    - !reference [.kaniko-auth, before_script]
   script:
-    - echo "🐳 通用 Docker 项目构建"
-    - EXTRA_BUILD_ARGS=""
-    - !reference [.kaniko-build-script, script]
+    - |
+      if [ -z "${REGISTRY_USER}" ] || [ -z "${REGISTRY_PASSWORD}" ]; then
+        echo "ERROR: missing REGISTRY_USER or REGISTRY_PASSWORD"
+        exit 1
+      fi
+      if [ ! -f ".ci-config" ]; then
+        echo "ERROR: .ci-config not found"
+        exit 1
+      fi
+      . ./.ci-config
+      case "${CI_COMMIT_REF_NAME}" in
+        main|master|prod) IMAGE_NAMESPACE="${IMAGE_NAMESPACE_PROD}" ;;
+        *)                IMAGE_NAMESPACE="${IMAGE_NAMESPACE_QA}" ;;
+      esac
+      IMAGE_NAME="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}"
+      IMAGE_TAG="$(date -u '+%y.%m.%d%H%M')-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_SLUG}.gitlabci"
+      echo "namespace=${IMAGE_NAMESPACE} image=${IMAGE_NAME}:${IMAGE_TAG}"
+      mkdir -p /kaniko/.docker
+      printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' \
+        "${IMAGE_REGISTRY}" "${REGISTRY_USER}" "${REGISTRY_PASSWORD}" \
+        > /kaniko/.docker/config.json
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}/cache" \
+        --verbosity="${KANIKO_VERBOSITY}" \
+        --cleanup
   rules:
     - exists:
         - go.mod
@@ -231,44 +262,27 @@ build-docker:
   tags:
     - docker
 
-# ==================== 阶段3: 完成报告 ====================
+# ==================== stage 2: report ====================
 
 report:
   stage: report
   image: alpine:latest
-  before_script:
-    - !reference [.job-header, before_script]
   script:
-    - echo ""
-    - echo "╔════════════════════════════════════════════════════════════════════╗"
-    - echo "║                     🎉 CI/CD 流程执行完成                          ║"
-    - echo "╚════════════════════════════════════════════════════════════════════╝"
-    - echo ""
-    - echo " 构建摘要:"
-    - echo "  ├─ 项目名称 : ${CI_PROJECT_NAME}"
-    - echo "  ├─ 项目路径 : ${CI_PROJECT_PATH}"
-    - echo "  ├─ 分支     : ${CI_COMMIT_REF_NAME}"
-    - echo "  ├─ Commit   : ${CI_COMMIT_SHORT_SHA}"
-    - echo "  ├─ 项目类型 : ${PROJECT_TYPE:-unknown}"
-    - echo "  ├─ 镜像仓库 : ${IMAGE_REGISTRY}"
-    - echo "  ├─ 命名空间 : ${IMAGE_NAMESPACE}"
-    - echo "  ├─ 镜像标签 : ${IMAGE_TAG}"
-    - echo "  ├─ 完整镜像 : ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo "  └─ Latest   : ${IMAGE_NAME}:latest"
-    - echo ""
-    - echo " 拉取/运行镜像:"
-    - echo "   docker pull ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo "   docker run ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo ""
-    - echo "☸️  Kubernetes Deployment 片段:"
-    - echo "   spec.containers[].image: ${IMAGE_NAME}:${IMAGE_TAG}"
-    - echo ""
-    - echo "✅ 构建完成 — $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-    - echo "════════════════════════════════════════════════════════════════════"
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH =~ /^release\/.*$/'
+    - |
+      if [ -f ".ci-config" ]; then
+        . ./.ci-config
+        case "${CI_COMMIT_REF_NAME}" in
+          main|master|prod) IMAGE_NAMESPACE="${IMAGE_NAMESPACE_PROD}" ;;
+          *)                IMAGE_NAMESPACE="${IMAGE_NAMESPACE_QA}" ;;
+        esac
+      fi
+      IMAGE_TAG="$(date -u '+%y.%m.%d%H%M')-${CI_COMMIT_SHORT_SHA}-${CI_COMMIT_REF_SLUG}.gitlabci"
+      echo "project=${CI_PROJECT_NAME}"
+      echo "branch=${CI_COMMIT_REF_NAME}"
+      echo "namespace=${IMAGE_NAMESPACE}"
+      echo "image=${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/${CI_PROJECT_NAME}:${IMAGE_TAG}"
+      echo "done at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
   needs:
-    - job: detect-project-type
     - job: build-go
       optional: true
     - job: build-java-maven

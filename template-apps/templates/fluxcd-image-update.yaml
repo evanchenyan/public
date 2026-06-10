@@ -5,7 +5,7 @@ metadata:
   name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
   labels:
-    {{- include "starfire-templates-app.labels" . | nindent 6 }}
+    {{- include "templateApps.labels" . | nindent 6 }}
     {{- if .Values.fluxcdImageUpdate.extraLabels }}
     {{- toYaml .Values.fluxcdImageUpdate.extraLabels | nindent 6 }}
     {{- end }}
@@ -23,7 +23,7 @@ metadata:
   name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
   labels:
-    {{- include "starfire-templates-app.labels" . | nindent 6 }}
+    {{- include "templateApps.labels" . | nindent 6 }}
     {{- if .Values.fluxcdImageUpdate.extraLabels }}
     {{- toYaml .Values.fluxcdImageUpdate.extraLabels | nindent 6 }}
     {{- end }}
@@ -39,12 +39,14 @@ kind: Receiver
 metadata:
   name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+  labels:
+    {{- include "templateApps.labels" . | nindent 4 }}
 spec:
   type: generic
   secretRef:
     name: {{ .Values.fluxcdImageUpdate.webhookReceiver.secretRef }}
   resources:
-    - apiVersion: image.toolkit.fluxcd.io/v1alpha1
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
       namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}

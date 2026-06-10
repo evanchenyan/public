@@ -1,10 +1,10 @@
 apiVersion: v2
 appVersion: 1.16.0
-description: starfire's Application Helm chart for Kubernetes
+description: templateApps Application Helm chart for Kubernetes
 icon: https://www.starfire.jp/favicon.ico
 maintainers:
 - email: ops@starfire.jp
   name: starfireops
-name: starfire-templates-app
+name: templateApps
 type: application
 version: 0.1.14

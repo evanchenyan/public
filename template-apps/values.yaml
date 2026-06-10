@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: harbor.example.com/public/nginx
+  repository: imagerepository/starfire-dev-01-templateApps
   pullPolicy: IfNotPresent
   tag: ""
 
@@ -14,7 +14,13 @@ podLabels: {}
 
 podSecurityContext: {}
 securityContext: {}
-serviceAccount: {}
+
+serviceAccount:
+  create: false
+  automount: false
+  name: ""
+  annotations: {}
+
 service:
   type: ClusterIP
   port: 80
@@ -27,7 +33,6 @@ resources: {}
   #   cpu: 100m
   #   memory: 128Mi
 
-# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
 livenessProbe:
   httpGet:
     path: /
@@ -37,18 +42,8 @@ readinessProbe:
     path: /
     port: http
 
-# Additional volumes on the output Deployment definition.
 volumes: []
-  # - name: foo
-  #   secret:
-  #     secretName: mysecret
-  #     optional: false
-
-# Additional volumeMounts on the output Deployment definition.
 volumeMounts: []
-  # - name: foo
-  #   mountPath: "/etc/foo"
-  #   readOnly: true
 
 nodeSelector: {}
 tolerations: []
@@ -57,8 +52,10 @@ affinity: {}
 fluxcdImageUpdate:
   enabled: true
   fluxcdNamespace: flux-system
+  extraLabels: {}
   imageRepository:
     interval: 3m0s
+    secretRef: harbor-registry-secret
   imagePolicy:
     filterTags:
       pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.giteaci$'
