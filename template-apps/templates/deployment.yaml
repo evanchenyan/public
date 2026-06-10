@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: {{ include "templateApps.fullname" . }}
   labels:
-    name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+    name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:

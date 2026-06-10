@@ -2,7 +2,7 @@
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+  name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
   labels:
     {{- include "templateApps.labels" . | nindent 6 }}
@@ -20,7 +20,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+  name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
   labels:
     {{- include "templateApps.labels" . | nindent 6 }}
@@ -29,25 +29,25 @@ metadata:
     {{- end }}
 spec:
   imageRepositoryRef:
-    name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+    name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
 {{ toYaml .Values.fluxcdImageUpdate.imagePolicy | indent 2 }}
 {{- end }}
----
-{{- if and .Values.fluxcdImageUpdate.enabled .Values.fluxcdImageUpdate.webhookReceiver -}}
-apiVersion: notification.toolkit.fluxcd.io/v1
-kind: Receiver
-metadata:
-  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
-  namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
-  labels:
-    {{- include "templateApps.labels" . | nindent 4 }}
-spec:
-  type: generic
-  secretRef:
-    name: {{ .Values.fluxcdImageUpdate.webhookReceiver.secretRef }}
-  resources:
-    - apiVersion: image.toolkit.fluxcd.io/v1
-      kind: ImageRepository
-      name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
-      namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
-{{- end }}
+# ---
+# {{- if and .Values.fluxcdImageUpdate.enabled .Values.fluxcdImageUpdate.webhookReceiver -}}
+# apiVersion: notification.toolkit.fluxcd.io/v1
+# kind: Receiver
+# metadata:
+#   name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
+#   namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+#   labels:
+#     {{- include "templateApps.labels" . | nindent 4 }}
+# spec:
+#   type: generic
+#   secretRef:
+#     name: {{ .Values.fluxcdImageUpdate.webhookReceiver.secretRef }}
+#   resources:
+#     - apiVersion: image.toolkit.fluxcd.io/v1
+#       kind: ImageRepository
+#       name: {{ .Release.Namespace }}-{{ include "templateApps.name" . }}
+#       namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+# {{- end }}
