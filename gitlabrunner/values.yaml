@@ -5,8 +5,8 @@ useTini: false
 imagePullPolicy: IfNotPresent
 livenessProbe: {}
 readinessProbe: {}
-gitlabUrl: https://gitlab.zevpa.com
-runnerToken: ""
+gitlabUrl: https://gitlab.zevpa.com/
+runnerToken: "glrt-U58eusl2_DUZ1QSZMIGI0m86MQp0OjEKdTozCw.01.121mxdp2q"
 shutdown_timeout: 0
 sessionServer:
   enabled: false

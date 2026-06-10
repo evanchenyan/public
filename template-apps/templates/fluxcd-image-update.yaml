@@ -1,0 +1,51 @@
+{{- if and .Values.fluxcdImageUpdate.enabled .Values.fluxcdImageUpdate.imageRepository -}}
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+  namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+  labels:
+    {{- include "starfire-templates-app.labels" . | nindent 6 }}
+    {{- if .Values.fluxcdImageUpdate.extraLabels }}
+    {{- toYaml .Values.fluxcdImageUpdate.extraLabels | nindent 6 }}
+    {{- end }}
+spec:
+  image: {{ .Values.image.repository }}
+  interval: {{ .Values.fluxcdImageUpdate.imageRepository.interval }}
+  secretRef:
+    name: {{ .Values.fluxcdImageUpdate.imageRepository.secretRef }}
+{{- end }}
+---
+{{- if and .Values.fluxcdImageUpdate.enabled .Values.fluxcdImageUpdate.imagePolicy -}}
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+  namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+  labels:
+    {{- include "starfire-templates-app.labels" . | nindent 6 }}
+    {{- if .Values.fluxcdImageUpdate.extraLabels }}
+    {{- toYaml .Values.fluxcdImageUpdate.extraLabels | nindent 6 }}
+    {{- end }}
+spec:
+  imageRepositoryRef:
+    name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+{{ toYaml .Values.fluxcdImageUpdate.imagePolicy | indent 2 }}
+{{- end }}
+---
+{{- if and .Values.fluxcdImageUpdate.enabled .Values.fluxcdImageUpdate.webhookReceiver -}}
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+  namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+spec:
+  type: generic
+  secretRef:
+    name: {{ .Values.fluxcdImageUpdate.webhookReceiver.secretRef }}
+  resources:
+    - apiVersion: image.toolkit.fluxcd.io/v1alpha1
+      kind: ImageRepository
+      name: {{ .Release.Namespace }}-{{ include "trackableappname" . }}
+      namespace: {{ .Values.fluxcdImageUpdate.fluxcdNamespace }}
+{{- end }}

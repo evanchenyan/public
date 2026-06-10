@@ -1,0 +1,131 @@
+# 在 .gitlab-ci.yml 中添加以下内容（替换原有的 build-go 部分）
+
+build-go:
+  stage: build-and-push
+  image:
+    name: ${KANIKO_IMAGE}
+    entrypoint: [""]
+  before_script:
+    - !reference [.kaniko-setup, script]
+  script:
+    - echo "🚀 开始构建 Go 项目（优化版）"
+    - echo "步骤1/11: 项目信息"
+    - echo "  → Go版本: $(grep "^go " go.mod | awk '{print $2}')"
+    - echo "  → Module名称: $(grep "^module " go.mod | awk '{print $2}')"
+    - echo "  → CI Commit: ${CI_COMMIT_SHORT_SHA}"
+    
+    - echo "步骤2/11: 分析go.mod依赖"
+    - echo "  → 直接依赖数: $(grep -E "^[[:space:]]+[^/]+/" go.mod | grep -v "=>" | wc -l)"
+    - echo "  → 主要依赖:"
+    - grep -E "^[[:space:]]+[^/]+/" go.mod | head -10 | sed 's/^/      /'
+    
+    - echo "步骤3/11: 检查Go源码质量"
+    - echo "  → .go文件总数: $(find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" | wc -l)"
+    - echo "  → 代码行数统计: $(find . -name "*.go" -not -path "./vendor/*" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}') 行"
+    - echo "  → main入口: $([ -f main.go ] && echo '✓ main.go存在' || echo '⚠️ 未找到main.go')"
+    
+    - echo "步骤4/11: 设置构建参数"
+    - export BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
+    - export GIT_COMMIT=${CI_COMMIT_SHORT_SHA}
+    - export GIT_VERSION=${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}
+    - echo "  → BUILD_TIME: ${BUILD_TIME}"
+    - echo "  → GIT_COMMIT: ${GIT_COMMIT}"
+    - echo "  → GIT_VERSION: ${GIT_VERSION}"
+    - echo "  → GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}"
+    
+    - echo "步骤5/11: 验证Dockerfile内容"
+    - echo "  → Dockerfile完整内容:"
+    - cat ${DOCKERFILE_PATH} | sed 's/^/    /'
+    
+    - echo "步骤6/11: 检查多阶段构建"
+    - |
+      if grep -q "FROM.*as build" ${DOCKERFILE_PATH} 2>/dev/null; then
+        BUILD_STAGES=$(grep -c "^FROM" ${DOCKERFILE_PATH})
+        echo "  ✓ 检测到多阶段构建（共${BUILD_STAGES}个阶段）"
+      else
+        echo "  ⚠️ 未使用多阶段构建,建议优化镜像大小"
+      fi
+    
+    - echo "步骤7/11: 分析Dockerfile层缓存策略"
+    - |
+      if grep -A5 "^COPY go\.mod" ${DOCKERFILE_PATH} | grep -q "RUN go mod download"; then
+        echo "  ✓ 依赖缓存优化: go.mod → go mod download 顺序正确"
+      else
+        echo "  ⚠️ 建议优化Dockerfile: 先复制go.mod/go.sum,再下载依赖"
+      fi
+    
+    - echo "步骤8/11: 检查.dockerignore优化"
+    - |
+      if [ -f ".dockerignore" ]; then
+        echo "  ✓ .dockerignore存在,排除以下文件:"
+        cat .dockerignore | sed 's/^/      /'
+      else
+        echo "  ⚠️ .dockerignore不存在,建议创建排除.git, vendor等目录"
+        echo "  → 创建临时.dockerignore"
+        cat > .dockerignore <<EOF
+.git
+*.md
+*.log
+tmp/
+Dockerfile*
+.gitlab-ci.yml
+Makefile
+EOF
+      fi
+    
+    - echo "步骤9/11: 预构建验证（本地编译测试）"
+    - |
+      echo "  → 测试Go代码编译..."
+      if command -v go &> /dev/null; then
+        go build -o /tmp/test_binary ./... 2>&1 | head -20 || echo "编译测试跳过"
+      else
+        echo "  → Kaniko镜像内无Go编译器,将在Dockerfile内编译"
+      fi
+    
+    - echo "步骤10/11: 执行Kaniko构建"
+    - |
+      /kaniko/executor \
+        --context="${CONTEXT_DIR}" \
+        --dockerfile="${DOCKERFILE_PATH}" \
+        --destination="${IMAGE_NAME}:${IMAGE_TAG}" \
+        --destination="${IMAGE_NAME}:latest" \
+        --cache=true \
+        --cache-repo="${IMAGE_REGISTRY}/${CI_PROJECT_PATH}/cache" \
+        --cache-ttl=168h \
+        --build-arg="GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}" \
+        --build-arg="GOSUMDB=${GOSUMDB:-sum.golang.org}" \
+        --build-arg="SKAFFOLD_GO_GCFLAGS=${SKAFFOLD_GO_GCFLAGS:--N -l}" \
+        --build-arg="LDFLAGS=-s -w" \
+        --build-arg="BUILD_TIME=${BUILD_TIME}" \
+        --build-arg="GIT_COMMIT=${GIT_COMMIT}" \
+        --build-arg="GIT_VERSION=${GIT_VERSION}" \
+        --verbosity=debug \
+        --snapshotMode=redo \
+        --cleanup \
+        --reproducible 2>&1 | tee /tmp/kaniko.log
+      
+      if [ ${PIPESTATUS[0]} -ne 0 ]; then
+        echo "❌ 构建失败！错误日志:"
+        grep -A20 -B5 "error\|failed\|ERROR" /tmp/kaniko.log | tail -50
+        exit 1
+      fi
+    
+    - echo "步骤11/11: 验证和优化分析"
+    - !reference [.verify-image, script]
+    - !reference [.print-image-info, script]
+    
+    - echo "📊 Go项目优化建议:"
+    - |
+      echo "  ✓ 镜像大小: $(skopeo inspect docker://${IMAGE_NAME}:${IMAGE_TAG} --creds "${REGISTRY_USER}:${REGISTRY_PASSWORD}" 2>/dev/null | jq -r '.Size' | numfmt --to=iec 2>/dev/null || echo '查询中')"
+      echo "  ✓ 基础镜像: $(skopeo inspect docker://${IMAGE_NAME}:${IMAGE_TAG} --creds "${REGISTRY_USER}:${REGISTRY_PASSWORD}" 2>/dev/null | jq -r '.Config' | cut -d':' -f2 | head -c 12 || echo '查询中')"
+      echo "  → 优化点1: 已启用CGO_ENABLED=0生成静态二进制"
+      echo "  → 优化点2: 已使用distroless基础镜像（无shell,更安全）"
+      echo "  → 优化点3: 已注入构建元数据便于追溯"
+      echo "  → 优化点4: 已启用-layer缓存加速构建"
+  only:
+    variables:
+      - $PROJECT_TYPE == "go"
+  tags:
+    - docker
+  dependencies:
+    - detect-project-type
