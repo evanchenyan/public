@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: harbor-private-registry
-  namespace: flux-system # 必须和你的 ImageRepository 在同一个 Namespace
-type: kubernetes.io/dockerconfigjson # 声明镜像仓库类型的 Secret
-data:
-  # echo -n '{"auths":{"harbor.zevpa.com":{"username":"{admin}","password":"{Harbor12345}"}}}' | base64 -w 0
-  .dockerconfigjson: eyJhdXRocyI6eyJoYXJib3IuemV2cGEuY29tIjp7InVzZXJuYW1lIjoie2FkbWlufSIsInBhc3N3b3JkIjoie0hhcmJvcjEyMzQ1fSJ9fX0=

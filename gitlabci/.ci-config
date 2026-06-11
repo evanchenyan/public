@@ -1,9 +1,0 @@
-# .ci-config
-# Project-level CI/CD configuration
-# Edit this file to change the image namespace for this project.
-
-# Production namespace: used for main/master/prod branches
-IMAGE_NAMESPACE_PROD=prod-starfire
-
-# QA namespace: used for dev/test/stg and all other branches
-IMAGE_NAMESPACE_QA=starfire-qa
