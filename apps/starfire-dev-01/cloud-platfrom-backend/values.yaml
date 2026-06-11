@@ -1,0 +1,116 @@
+application:
+  addtime: '2026-06-11_10:36:16'
+  description: 'starfire-dev-01/cloud-platfrom-backend'
+
+image:
+  repository: harbor.zevpa.com/starfire-dev-01/cloud-platfrom-backend # {"$imagepolicy": "flux-system:starfire-dev-01-cloud-platfrom-backend:name"}
+  tag: '' # {"$imagepolicy": "flux-system:starfire-dev-01-cloud-platfrom-backend:tag"}
+
+replicaCount: "1"
+revisionHistoryLimit: 10
+
+envFrom:
+  - configMapRef:
+      name: configmap-base
+
+env:
+  JAVA_OPTS: -Duser.timezone=Asia/Shanghai -XX:+UseContainerSupport -XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=75.0
+
+service:
+  enabled: true
+  type: ClusterIP
+  name: http
+  servicePort: 8080
+  targetPort: 8080
+
+resources:
+  limits:
+    cpu: '1'
+    memory: 2Gi
+  requests:
+    cpu: '1'
+    memory: 2Gi
+
+livenessProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  initialDelaySeconds: 30
+  timeoutSeconds: 15
+  scheme: "HTTP"
+readinessProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  initialDelaySeconds: 30
+  timeoutSeconds: 5
+  scheme: "HTTP"
+startupProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  scheme: "HTTP"
+  initialDelaySeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 25
+  periodSeconds: 15
+
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 10"]
+
+terminationGracePeriodSeconds: 45
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 30
+        preference:
+          matchExpressions:
+            - key: pay-mode
+              operator: In
+              values:
+                - monthly
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 80
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cloud-platfrom-backend
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+
+
+persistence:
+  enabled: false
+  type: nfs
+  volumes:
+    - name: nfsdata
+      mount:
+        path: /data/nfs
+  nfs:
+    server: nfs-server
+    path: /nfsdata/data
+
+fluxcdImageUpdate:
+  enabled: true
+  fluxcdNamespace: flux-system
+  imageRepository:
+    interval: 1m0s
+    secretRef: harbor-private-registry
+  imagePolicy:
+    filterTags:
+      pattern: ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-.+-.\.gitlabci$
+    policy:
+      semver:
+        range: '>22.10.10-x'
+  webhookReceiver:
+    secretRef: webhook-token
+
