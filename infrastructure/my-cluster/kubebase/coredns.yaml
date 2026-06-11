@@ -9,6 +9,7 @@ data:
         hosts {
             172.31.14.141 gitops.zevpa.com
             172.31.14.141 harbor.zevpa.com
+            172.31.14.141 gitlab.zevpa.com
             fallthrough
         }
         ready
