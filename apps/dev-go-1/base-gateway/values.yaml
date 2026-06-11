@@ -1,0 +1,164 @@
+application:
+  addtime: '2025-03-20_11:19:49'
+  appid: '100005006'
+  description: 'cdp base-gateway'
+  gitlab: 'https://git.heytea.com/service/base/base-gateway.git'
+  teamleader: 'lizhonghu'
+  tier: 'gateway'
+  level: 'L2'
+  track: default # 如果track值不为‘default’，则imagepolicy标识需要加上对应对track值，如 flux-system:prod-cdp-base-gateway-track_value:name
+  
+image:
+  repository: hcr.heytea.com/cdp-prod/base-gateway # {"$imagepolicy": "flux-system:prod-cdp-base-gateway:name"}
+  tag: 25.4.161336-eea7736-prod-cdp.bkci # {"$imagepolicy": "flux-system:prod-cdp-base-gateway:tag"}
+
+replicaCount: "1"
+#replicaCountAliyun: "0"
+revisionHistoryLimit: 10
+
+envFrom:
+  - configMapRef:
+      name: configmap-base
+
+env:
+  JAVA_OPTS: -Duser.timezone=Asia/Shanghai -XX:+UseContainerSupport -XX:InitialRAMPercentage=50.0 -XX:MaxRAMPercentage=75.0 -Dapollo.meta=https://prod-config.lan.heytea.com
+
+service:
+  enabled: true
+  type: ClusterIP
+  name: http
+  servicePort: 8080
+  targetPort: 8080
+
+resources:
+  limits:
+    cpu: '1'
+    memory: 2Gi
+  requests:
+    cpu: '1'
+    memory: 2Gi
+
+
+livenessProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  initialDelaySeconds: 30
+  timeoutSeconds: 15
+  scheme: "HTTP"
+readinessProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  initialDelaySeconds: 30
+  timeoutSeconds: 5
+  scheme: "HTTP"
+startupProbe:
+  enabled: true
+  probeType: "httpGet"
+  port: 8081
+  path: "/actuator/health"
+  scheme: "HTTP"
+  initialDelaySeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 25
+  periodSeconds: 15
+
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh", "-c", "sleep 10"]
+      
+terminationGracePeriodSeconds: 45
+
+WorkloadSpread:
+  enabled: 
+  subsets:
+    - name: group-cvm  ## 按比例优先调度到具有标签instance-group=cvm节点上.
+      maxReplicas: 50% # 最大占比(调整后不会立即触发调度,下次滚动更新生效.)
+      requiredNodeSelectorTerm:
+        matchExpressions:
+        - key: instance-group
+          operator: In
+          values:
+          - cvm
+    - name: group-eklet  ## 剩余调度到具有标签instance-group=eklet节点上.
+      requiredNodeSelectorTerm:
+        matchExpressions:
+        - key: instance-group
+          operator: In
+          values:
+          - eklet
+  scheduleStrategy:
+    type: Adaptive
+    adaptive:
+      rescheduleCriticalSeconds: 60 ## 如果pending 60秒仍无法按策略调度，则调度到其它可用节点上.
+
+affinity:
+  nodeAffinity:  # 不定义默认优先调度到包年包月节点
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 30
+        preference:
+          matchExpressions:
+            - key: pay-mode
+              operator: In
+              values:
+                - monthly
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 80
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - base-gateway
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+
+traefikIngressroute:
+  enabled: false
+  entryPoints: http
+  host: prod-cdp-base-gateway.heyteago.com
+
+
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+hpc:
+  enabled: false
+  provider: tencentcloud # 'alibabacloud' or 'tencentcloud'
+  crons:
+    - name: "scale-down"
+      schedule: "0 00 1 * * *"
+      targetSize: 0
+    - name: "scale-up"
+      schedule: "0 00 9 * * *"
+      targetSize: 1
+
+vpa: 
+  enabled: false
+  updateMode: "Auto" # 开启自动更新资源配置: "Auto"
+  containerPolicies: 
+    minAllowed:
+      cpu: '1'
+      memory: 2Gi
+    maxAllowed:
+      cpu: '1'
+      memory: 2Gi
+
+persistence:
+  enabled: false
+  type: nfs
+  volumes:
+    - name: nfsdata
+      mount:
+        path: /data/nfs
+  nfs:
+    server: nfs-server
+    path: /nfsdata/data
