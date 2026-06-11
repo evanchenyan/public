@@ -52,13 +52,12 @@ affinity: {}
 fluxcdImageUpdate:
   enabled: true
   fluxcdNamespace: flux-system
-  extraLabels: {}
   imageRepository:
-    interval: 3m0s
-    secretRef: harbor-registry-secret
+    interval: 1m0s
+    secretRef: harbor-private-registry
   imagePolicy:
     filterTags:
-      pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.giteaci$'
+      pattern: ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-.+-.\.gitlabci$
     policy:
       semver:
         range: '>22.10.10-x'
