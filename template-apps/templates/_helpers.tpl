@@ -40,3 +40,17 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+<<<<<<< Updated upstream
+=======
+
+{{/*
+Generate trackable app name for FluxCD image update resources.
+Uses nameOverride if set, otherwise falls back to Chart name.
+*/}}
+
+{{- define "trackableappname" -}}
+{{- $trackableName := printf "%s-%s" (include "appname" .) .Values.application.track -}}
+{{- $trackableName | trimSuffix "-default" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+>>>>>>> Stashed changes
