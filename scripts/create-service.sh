@@ -2,20 +2,19 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <cluster-name> <namespace> <service-name>"
-  echo "  e.g.: $0 dev-go-1 prod-cdp base-gateway"
+  echo "Usage: $0 <namespace> <service-name>"
+  echo "  e.g.: $0 starfire-dev-01 base-gateway"
   exit 1
 }
 
-[[ $# -ne 3 ]] && usage
+[[ $# -ne 2 ]] && usage
 
-CLUSTER="$1"
-NAMESPACE="$2"
-SERVICE="$3"
+NAMESPACE="$1"
+SERVICE="$2"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPS_DIR="$(cd "$SCRIPT_DIR/../apps" && pwd)"
-OUT_DIR="$APPS_DIR/$CLUSTER/$SERVICE"
+OUT_DIR="$APPS_DIR/$NAMESPACE/$SERVICE"
 
 if [[ -d "$OUT_DIR" ]]; then
   echo "Error: $OUT_DIR already exists"
@@ -65,12 +64,12 @@ spec:
   releaseName: ${SERVICE}
   chart:
     spec:
-      chart: heytea-template-app
+      chart: template-app
       sourceRef:
         kind: HelmRepository
-        name: heytea-helm-charts-public
+        name: repo
         namespace: flux-system
-      version: "2.1.0"
+      version: "0.1.14"
   interval: 1h0m0s
   timeout: 15m0s
   install:
@@ -95,16 +94,10 @@ TODAY=$(date '+%Y-%m-%d_%H:%M:%S')
 cat > "$OUT_DIR/values.yaml" <<EOF
 application:
   addtime: '${TODAY}'
-  appid: ''
-  description: '${NAMESPACE} ${SERVICE}'
-  gitlab: ''
-  teamleader: ''
-  tier: ''
-  level: 'L2'
-  track: default
+  description: '${NAMESPACE}/${SERVICE}'
 
 image:
-  repository: hcr.heytea.com/${NAMESPACE}/${SERVICE} # {"\$imagepolicy": "flux-system:${NAMESPACE}-${SERVICE}:name"}
+  repository: harbor.zevpa.com/${NAMESPACE}/${SERVICE} # {"\$imagepolicy": "flux-system:${NAMESPACE}-${SERVICE}:name"}
   tag: '' # {"\$imagepolicy": "flux-system:${NAMESPACE}-${SERVICE}:tag"}
 
 replicaCount: "1"
@@ -188,33 +181,6 @@ affinity:
             - ${SERVICE}
         topologyKey: failure-domain.beta.kubernetes.io/zone
 
-hpa:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 70
-
-hpc:
-  enabled: false
-  provider: tencentcloud
-  crons:
-    - name: "scale-down"
-      schedule: "0 00 1 * * *"
-      targetSize: 0
-    - name: "scale-up"
-      schedule: "0 00 9 * * *"
-      targetSize: 1
-
-vpa:
-  enabled: false
-  updateMode: "Auto"
-  containerPolicies:
-    minAllowed:
-      cpu: '1'
-      memory: 2Gi
-    maxAllowed:
-      cpu: '1'
-      memory: 2Gi
 
 persistence:
   enabled: false
@@ -226,6 +192,22 @@ persistence:
   nfs:
     server: nfs-server
     path: /nfsdata/data
+
+fluxcdImageUpdate:
+  enabled: true
+  fluxcdNamespace: flux-system
+  imageRepository:
+    interval: 1m0s
+    secretRef: harbor-private-registry
+  imagePolicy:
+    filterTags:
+      pattern: ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-.+-.\.gitlabci$
+    policy:
+      semver:
+        range: '>22.10.10-x'
+  webhookReceiver:
+    secretRef: webhook-token
+
 EOF
 
 echo "✅ Created: $OUT_DIR"
