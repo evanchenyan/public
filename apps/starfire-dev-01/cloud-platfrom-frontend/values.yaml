@@ -3,7 +3,7 @@ application:
   description: 'starfire-dev-01/cloud-platfrom-frontend'
 
 image:
-  repository: harbor.zevpa.com/starfire-dev-01/cloud-platfrom-frontend # {"$imagepolicy": "flux-system:starfire-dev-01-cloud-platfrom-frontend:name"}
+  repository: harbor.zevpa.com/starfire-qa/cloud-platfrom-frontend # {"$imagepolicy": "flux-system:starfire-dev-01-cloud-platfrom-frontend:name"}
   tag: '' # {"$imagepolicy": "flux-system:starfire-dev-01-cloud-platfrom-frontend:tag"}
 
 replicaCount: "1"
