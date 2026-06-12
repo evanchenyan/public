@@ -1,6 +1,6 @@
 nameOverride: ""
-namespaceOverride: "monitoring"
-kubeTargetVersionOverride: ""
+namespaceOverride: ""
+kubeTargetVersionOverride: "monitoring"
 kubeVersionOverride: ""
 fullnameOverride: ""
 commonLabels:
@@ -24,7 +24,7 @@ crds:
       kubectl:
         registry: registry.k8s.io
         repository: kubectl
-        tag: "v1.35.0"
+        tag: ""  # defaults to the Kubernetes version
         sha: ""
         pullPolicy: IfNotPresent
     env: {}
@@ -393,7 +393,7 @@ alertmanager:
     logFormat: logfmt
     logLevel: info
     replicas: 2
-    retention: 10d
+    retention: 7d
     storage: {}
     externalUrl:
     routePrefix: /
@@ -906,7 +906,7 @@ prometheusOperator:
       annotations: {}
     deployment:
       enabled: false
-      replicas: 1
+      replicas: 2
       strategy: {}
       podDisruptionBudget:
         enabled: false
@@ -1026,8 +1026,10 @@ prometheusOperator:
     certManager:
       enabled: false
       rootCert:
+        duration: ""  # default to be 5y
         revisionHistoryLimit:
       admissionCert:
+        duration: ""  # default to be 1y
         revisionHistoryLimit:
   namespaces: {}
   denyNamespaces: []
@@ -1326,11 +1328,11 @@ prometheus:
     scrapeClassicHistograms: false
     scrapeNativeHistograms: false
     scrapeFailureLogFile: ""
-    scrapeInterval: "30s"
+    scrapeInterval: ""
     scrapeTimeout: ""
     scrapeClasses: []
     podTargetLabels: []
-    evaluationInterval: "30s"
+    evaluationInterval: ""
     listenLocal: false
     enableOTLPReceiver: false
     enableAdminAPI: false
@@ -1376,14 +1378,14 @@ prometheus:
     scrapeConfigSelectorNilUsesHelmValues: true
     scrapeConfigSelector: {}
     scrapeConfigNamespaceSelector: {}
-    retention: 10d
-    retentionSize: "20GiB"
+    retention: 7d
+    retentionSize: ""
     tsdb:
       outOfOrderTimeWindow: 0s
     walCompression: true
     paused: false
     replicas: 2
-    shards: 2
+    shards: 1
     logLevel: info
     logFormat: logfmt
     routePrefix: /
@@ -1399,12 +1401,12 @@ prometheus:
     resources: {}
     storageSpec:
       volumeClaimTemplate:
-          spec:
-            storageClassName: "openebs-hostpath"  # 根据实际存储类调整
-            accessModes: ["ReadWriteOnce"]
-            resources:
-              requests:
-                storage: 60Gi
+        spec:
+          storageClassName: "cbs"  # 根据实际存储类调整
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 60Gi
     volumes: []
     volumeMounts: []
     additionalScrapeConfigs: []
@@ -1544,8 +1546,8 @@ thanosRuler:
     ruleSelector: {}
     logFormat: logfmt
     logLevel: info
-    replicas: 1
-    retention: 10d
+    replicas: 2
+    retention: 7d
     evaluationInterval: ""
     storage: {}
     alertmanagersConfig:
