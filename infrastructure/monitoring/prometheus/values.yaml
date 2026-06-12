@@ -42,6 +42,65 @@ prometheus:
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
+    # 自动发现所有 pod 和 node
+    additionalScrapeConfigs:
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (.+)
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            action: replace
+            target_label: kubernetes_container_name
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+            action: replace
+            target_label: kubernetes_hostname
+          - source_labels: [__meta_kubernetes_node_name]
+            action: replace
+            target_label: kubernetes_node_name
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+    # 内置 coredns 监控（如果有 metrics endpoint）
+    additionalPodMonitors:
+      - name: coredns
+        jobLabel: k8s-app
+        namespaceSelector:
+          matchNames:
+            - kube-system
+        selector:
+          matchLabels:
+            k8s-app: kube-dns
+        podMetricsEndpoints:
+          - port: metrics
+            path: /metrics
+            interval: 30s
     storageSpec:
       volumeClaimTemplate:
         spec:

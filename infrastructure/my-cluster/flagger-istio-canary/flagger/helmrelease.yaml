@@ -1,0 +1,32 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: flagger
+  namespace: flagger-system
+spec:
+  interval: 30m
+  dependsOn:
+    - name: istiod
+      namespace: istio-system
+    - name: prometheus
+      namespace: test
+  chart:
+    spec:
+      chart: flagger
+      version: "1.39.x"
+      sourceRef:
+        kind: HelmRepository
+        name: flagger
+        namespace: flux-system
+      interval: 12h
+  values:
+    meshProvider: istio
+    metricsServer: http://prometheus-operated.test:9090
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3

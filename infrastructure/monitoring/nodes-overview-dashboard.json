@@ -1,0 +1,353 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "color-background"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Node"
+            },
+            "properties": [
+              {
+                "id": "unit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "IP"
+            },
+            "properties": [
+              {
+                "id": "unit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Cores"
+            },
+            "properties": [
+              {
+                "id": "unit"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory Total"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disk Total"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Network In"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Network Out"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 23,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.4.7",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (instance, node) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) / count by (instance, node) (node_cpu_seconds_total{mode=\"user\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "{{node}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"} - node_filesystem_free_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"}) / node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "node_memory_MemTotal_bytes",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_network_receive_bytes_total[5m])",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "rate(node_network_transmit_bytes_total[5m])",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "count by (node) (node_cpu_seconds_total{mode=\"system\"})",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{node}}",
+          "range": false,
+          "refId": "H"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "node_uname_info",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "I"
+        }
+      ],
+      "title": "Node Overview Table",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value #A": true,
+              "Value #B": true,
+              "Value #C": true,
+              "Value #D": true,
+              "Value #E": true,
+              "Value #F": true,
+              "Value #G": true,
+              "Value #H": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "nodename": "Node",
+              "release": "Kernel",
+              "instance": "IP",
+              "Value #A": "CPU Usage %",
+              "Value #B": "Memory Usage %",
+              "Value #C": "Root Disk Usage %",
+              "Value #D": "Memory Total",
+              "Value #E": "Disk Total",
+              "Value #F": "Network In",
+              "Value #G": "Network Out",
+              "Value #H": "CPU Cores"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["nodes", "overview", "table"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "All Nodes Overview",
+  "uid": "all-nodes-overview",
+  "version": 1,
+  "weekStart": ""
+}

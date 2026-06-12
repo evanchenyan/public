@@ -1,0 +1,79 @@
+# Prometheus 配置（用于 Flagger 指标分析）
+prometheus:
+  prometheusSpec:
+    # 启用 Istio 指标采集
+    additionalScrapeConfigs:
+      - job_name: istio-proxy
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            action: keep
+            regex: '.*-envoy-prom'
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+
+    # 资源限制
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+
+    # 存储配置（小规模测试用）
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+  # 禁用 Alertmanager（用 Flagger 自身的分析即可）
+  alertmanager:
+    enabled: false
+
+# Grafana 配置
+grafana:
+  enabled: true
+  adminPassword: admin
+  service:
+    type: ClusterIP
+    port: 80
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-operated.test:9090
+        access: proxy
+        isDefault: true
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      istio-mesh:
+        url: https://raw.githubusercontent.com/istio/istio/master/manifests/addons/dashboards/istio-mesh-dashboard.json
+      istio-service:
+        url: https://raw.githubusercontent.com/istio/istio/master/manifests/addons/dashboards/istio-service-dashboard.json
+      flagger:
+        url: https://raw.githubusercontent.com/flagger/flagger/master/artifacts/grafana/dashboard.json

@@ -1,0 +1,25 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: prod-cashier-all-pods
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - prod-cashier
+  selector:
+    matchExpressions:
+      - key: app
+        operator: Exists
+  podMetricsEndpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 30s
+    - port: actuator
+      path: /actuator/prometheus
+      interval: 30s
+    - port: management
+      path: /actuator/prometheus
+      interval: 30s

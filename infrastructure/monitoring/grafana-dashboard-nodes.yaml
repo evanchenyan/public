@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodes-overview-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  nodes-overview.json: |
+    {
+      "title": "All Nodes Overview",
+      "uid": "all-nodes-overview",
+      "tags": ["nodes", "overview", "table"],
+      "panels": [
+        {
+          "type": "table",
+          "title": "Node Overview Table",
+          "gridPos": {"h": 23, "w": 24, "x": 0, "y": 0},
+          "datasource": "${datasource}",
+          "targets": [
+            {
+              "expr": "instance",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            },
+            {
+              "expr": "100 * (1 - (avg by (instance) (node_memory_MemAvailable_bytes) / avg by (instance) (node_memory_MemTotal_bytes)))",
+              "format": "table",
+              "instant": true,
+              "refId": "B"
+            },
+            {
+              "expr": "sum by (instance) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) / count by (instance) (node_cpu_seconds_total{mode=\"user\"})",
+              "format": "table",
+              "instant": true,
+              "refId": "C"
+            },
+            {
+              "expr": "100 * (1 - (node_filesystem_free_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"tmpfs\"}))",
+              "format": "table",
+              "instant": true,
+              "refId": "D"
+            },
+            {
+              "expr": "rate(node_network_receive_bytes_total[5m])",
+              "format": "table",
+              "instant": true,
+              "refId": "E"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total[5m])",
+              "format": "table",
+              "instant": true,
+              "refId": "F"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {},
+                "renameByName": {
+                  "instance": "Node IP",
+                  "Value #A": "Node",
+                  "Value #B": "Memory Usage %",
+                  "Value #C": "CPU Usage %",
+                  "Value #D": "Disk Usage %",
+                  "Value #E": "Network In (Bps)",
+                  "Value #F": "Network Out (Bps)"
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "orange", "value": 80},
+                  {"color": "red", "value": 90}
+                ]
+              },
+              "unit": "percentunit"
+            },
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "Node IP"},
+                "properties": [{"id": "unit"}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "Network In (Bps)"},
+                "properties": [{"id": "unit", "value": "Bps"}]
+              },
+              {
+                "matcher": {"id": "byName", "options": "Network Out (Bps)"},
+                "properties": [{"id": "unit", "value": "Bps"}]
+              }
+            ]
+          }
+        }
+      ]
+    }

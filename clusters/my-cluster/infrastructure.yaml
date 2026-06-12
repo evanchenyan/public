@@ -5,8 +5,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m1s
-  wait: false # wait for all applied resources to become ready
-  timeout: 1m0s
+  wait: true
+  timeout: 10m0s
   retryInterval: 1m0s
   prune: true # remove stale resources from cluster
   force: false # enable this to recreate resources on immutable fields changes
