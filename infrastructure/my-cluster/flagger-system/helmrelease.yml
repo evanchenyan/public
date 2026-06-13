@@ -10,13 +10,15 @@ spec:
     crds: CreateReplace
   upgrade:
     crds: CreateReplace
-  chartRef:
-    kind: OCIRepository
-    name: flagger
+  chart:
+    spec:
+      chart: flagger
+      version: "1.x"
+      sourceRef:
+        kind: HelmRepository
+        name: flagger
   values:
     nodeSelector:
       kubernetes.io/os: linux
     prometheus:
       enabled: false
-    # Flagger will auto-detect Istio installation
-    # serviceMesh: istio

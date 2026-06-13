@@ -1,13 +1,8 @@
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
+kind: HelmRepository
 metadata:
   name: flagger
   namespace: flagger-system
 spec:
   interval: 1h
-  url: oci://ghcr.io/fluxcd/charts/flagger
-  layerSelector:
-    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
-    operation: copy
-  ref:
-    semver: "1.x"
+  url: https://fluxcd-charts.storage.googleapis.com
