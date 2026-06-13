@@ -1,0 +1,30 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: my-custom-rules
+  namespace: monitoring # 建议与 kube-prometheus-stack 在同一个命名空间
+  labels:
+    # ⚠️ 极其重要：这个 label 必须匹配你 Prometheus 实例的 ruleSelector
+    # 默认情况下，Helm 安装生成的选择器要求带有 release 标签
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: my-custom-k8s-alerts # 规则组名称
+    rules:
+    - alert: PodFrequentlyRestarting # 告警名称
+      expr: increase(kube_pod_container_status_restarts_total[5m]) > 3 # PromQL 表达式
+      for: 2m # 满足条件持续多久后触发告警
+      labels:
+        severity: warning # 告警级别
+      annotations:
+        summary: "Pod 频繁重启 (Instance {{ $labels.instance }})"
+        description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} 在过去 5 分钟内重启次数超过 3 次。"
+
+    - alert: NodeDiskSpaceRunningOut
+      expr: (node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "主机磁盘空间不足"
+        description: "节点 {{ $labels.instance }} 的根分区可用空间低于 15% (当前值: {{ $value | printf \"%.2f\" }}%)。"

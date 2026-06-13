@@ -1,12 +1,13 @@
 nameOverride: ""
-namespaceOverride: ""
-kubeTargetVersionOverride: "monitoring"
+namespaceOverride: "monitoring"
+kubeTargetVersionOverride: ""
 kubeVersionOverride: ""
 fullnameOverride: ""
 commonLabels:
   app: kube-prometheus-stack
   environment: production
   team: platform-sre
+  monitor: monitoring-platform
   app.kubernetes.io/managed-by: flux
   app.kubernetes.io/part-of: cloud-native-automation-platform
 crds:
@@ -393,7 +394,7 @@ alertmanager:
     logFormat: logfmt
     logLevel: info
     replicas: 2
-    retention: 7d
+    retention: 168h
     storage: {}
     externalUrl:
     routePrefix: /
@@ -511,7 +512,13 @@ grafana:
         implementation: prometheus
   extraConfigmapMounts: []
   deleteDatasources: []
-  additionalDataSources: []
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki-stack.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 5000
   additionalDataSourcesString: ""
   prune: false
   service:
@@ -1547,7 +1554,7 @@ thanosRuler:
     logFormat: logfmt
     logLevel: info
     replicas: 2
-    retention: 7d
+    retention: 168h
     evaluationInterval: ""
     storage: {}
     alertmanagersConfig:
