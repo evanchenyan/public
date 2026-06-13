@@ -1,0 +1,18 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flagger
+  namespace: flagger-system
+spec:
+  interval: 12h
+  releaseName: flagger
+  install: # override existing Flagger CRDs
+    crds: CreateReplace
+  upgrade: # update Flagger CRDs
+    crds: CreateReplace
+  chartRef:
+    kind: OCIRepository
+    name: flagger
+  values:
+    nodeSelector:
+      kubernetes.io/os: linux
