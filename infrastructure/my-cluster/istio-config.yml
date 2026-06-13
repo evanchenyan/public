@@ -1,0 +1,13 @@
+apiVersion: istio.io/v1beta1
+kind: MeshConfig
+metadata:
+  name: istio-config
+  namespace: istio-system
+spec:
+  # Default sidecar log level
+  meshConfig:
+    accessLogFile: /dev/stdout
+    # Enable mutual TLS automatically
+    defaultConfig:
+      tracing:
+        sampling: 100
