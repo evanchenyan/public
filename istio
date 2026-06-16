@@ -1,0 +1,13 @@
+用户请求 
+   │
+   ▼
+1. Gateway (南北向流量入口，解密 HTTPS，核对域名 shop.com)
+   │
+   ▼
+2. VirtualService (看路径 /order，决定分流：80% 给 v1 订单服务，20% 给 v2)
+   │
+   ▼
+3. DestinationRule (找到 v2 的 Pod 列表，发现配置了熔断，顺便用 mTLS 加密)
+   │
+   ▼
+4. Envoy Sidecar (网格内部东西向流量，直接把请求送达具体的 Pod 容器)
