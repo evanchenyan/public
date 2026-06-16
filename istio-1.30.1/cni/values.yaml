@@ -1,0 +1,90 @@
+_internal_defaults_do_not_set:
+  hub: ""
+  tag: ""
+  variant: ""
+  image: install-cni
+  pullPolicy: ""
+  logging:
+    level: ""
+  cniBinDir: /opt/cni/bin
+  cniConfDir: /etc/cni/net.d
+  cniConfFileName: ""
+  cniNetnsDir: "/var/run/netns"
+  istioOwnedCNIConfigFileName: ""
+  istioOwnedCNIConfig: false
+  excludeNamespaces:
+    - kube-system
+  affinity: {}
+  daemonSetLabels: {}
+  podAnnotations: {}
+  podLabels: {}
+  chained: true
+  provider: "default"
+  ambient:
+    enabled: false
+    enablementSelectors: 
+    - podSelector:
+        matchLabels: {istio.io/dataplane-mode: ambient}
+    - podSelector:
+        matchExpressions:
+        - { key: istio.io/dataplane-mode, operator: NotIn, values: [none] }
+      namespaceSelector:
+        matchLabels: {istio.io/dataplane-mode: ambient}
+    configDir: ""
+    dnsCapture: true
+    ipv6: true
+    reconcileIptablesOnStartup: true
+    shareHostNetworkNamespace: false
+    enableAmbientDetectionRetry: false
+  repair:
+    enabled: true
+    hub: ""
+    tag: ""
+    labelPods: false
+    deletePods: false
+    repairPods: true
+    initContainerName: "istio-validation"
+    brokenPodLabelKey: "cni.istio.io/uninitialized"
+    brokenPodLabelValue: "true"
+  seccompProfile: {}
+  seLinuxOptions: {}
+  useAppArmorAnnotation: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  resourceQuotas:
+    enabled: false
+    pods: 5000
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  terminationGracePeriodSeconds: 30
+  revision: ""
+  ownerName: ""
+  global:
+    hub: registry.istio.io/release
+    tag: 1.30.1
+    variant: ""
+    imagePullPolicy: ""
+    logging:
+      level: info
+    logAsJson: false
+    networkPolicy:
+      enabled: false
+    imagePullSecrets: []
+    defaultResources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    nativeNftables: false
+    resourceScope: all
+  env: {}
